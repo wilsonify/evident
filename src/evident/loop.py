@@ -55,9 +55,10 @@ class EvidenceLoop:
         """
         self.history = []
         current = self.artifact
+        cached_eval: Evaluation | None = None  # reuse accepted `after` as next `before`
 
         for _ in range(self.max_iterations):
-            before = self.evaluator(current)
+            before = cached_eval if cached_eval is not None else self.evaluator(current)
 
             if self.diagnoser is not None:
                 diagnosis = self.diagnoser(before)
@@ -81,6 +82,7 @@ class EvidenceLoop:
 
             if decision.accepted:
                 current = candidate
+                cached_eval = after  # reuse this evaluation as `before` next iteration
             else:
                 break
 
