@@ -55,6 +55,7 @@ class EvidenceLoop:
 
         Returns the (possibly improved) artifact and the full provenance history.
         """
+        self.history = []
         current = self.artifact
 
         for _ in range(self.max_iterations):
@@ -83,9 +84,8 @@ class EvidenceLoop:
 
             if decision.accepted:
                 current = candidate
-
-            # Stop if there's no improvement to chase
-            if not decision.accepted:
+            else:
+                # Stop if there's no improvement to chase
                 break
 
         return current, self.history

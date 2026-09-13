@@ -6,7 +6,11 @@ Applications can write their own.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from evident.models import Decision, Evaluation
+
+Policy = Callable[["Evaluation", "Evaluation"], "Decision"]
 
 
 def strictly_better(before: Evaluation, after: Evaluation) -> Decision:
@@ -43,7 +47,7 @@ def must_pass(before: Evaluation, after: Evaluation) -> Decision:
     )
 
 
-def threshold(minimum: float) -> callable:
+def threshold(minimum: float) -> Policy:
     """Return a policy that accepts when the score meets a minimum threshold."""
 
     def _policy(before: Evaluation, after: Evaluation) -> Decision:
