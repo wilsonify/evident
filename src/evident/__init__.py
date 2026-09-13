@@ -1,6 +1,6 @@
 """evident – a toolkit for evidence-driven applications."""
 
-from evident.core import compare, evaluate, improve_and_verify
+from evident.core import compare, improve_and_verify
 from evident.loop import EvidenceLoop
 from evident.models import (
     Claim,
@@ -21,7 +21,6 @@ __all__ = [
     "Measurement",
     "Provenance",
     "compare",
-    "evaluate",
     "improve_and_verify",
     "EvidenceLoop",
 ]

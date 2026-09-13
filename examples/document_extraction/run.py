@@ -1,7 +1,7 @@
 """Example: document extraction validated against source evidence.
 
 A simple text extractor is evaluated against expected text.
-The improver fixes the extracted text when it disagrees with the evidence.
+The evaluator captures its evidence via closure.
 
 Run this example:
     python examples/document_extraction/run.py
@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 from evident import Diagnosis, Evaluation, EvidenceLoop
 from evident.policies import strictly_better
-
 
 # ---------------------------------------------------------------------------
 # Domain types
@@ -35,34 +34,37 @@ class SourceEvidence:
 
 
 # ---------------------------------------------------------------------------
-# Evaluator (independent from extractor)
+# Evaluator factory (closes over evidence)
 # ---------------------------------------------------------------------------
 
 
-def evaluate(doc: ExtractedDocument, evidence: SourceEvidence) -> Evaluation:
-    """Score how closely the extracted text matches the expected text."""
-    extracted = doc.text.strip()
-    expected = evidence.expected_text.strip()
+def make_evaluator(evidence: SourceEvidence):
+    """Return an evaluator that scores a document against fixed evidence."""
 
-    if not expected:
-        return Evaluation(overall=1.0, passed=True, label="empty evidence")
+    def evaluate(doc: ExtractedDocument) -> Evaluation:
+        extracted = doc.text.strip()
+        expected = evidence.expected_text.strip()
 
-    # Word-level overlap
-    extracted_words = set(extracted.lower().split())
-    expected_words = set(expected.lower().split())
-    if not expected_words:
-        return Evaluation(overall=1.0, passed=True)
+        if not expected:
+            return Evaluation(overall=1.0, passed=True, label="empty evidence")
 
-    precision = len(extracted_words & expected_words) / max(len(extracted_words), 1)
-    recall = len(extracted_words & expected_words) / len(expected_words)
-    f1 = 2 * precision * recall / max(precision + recall, 1e-9)
+        extracted_words = set(extracted.lower().split())
+        expected_words = set(expected.lower().split())
+        if not expected_words:
+            return Evaluation(overall=1.0, passed=True)
 
-    return Evaluation(
-        overall=f1,
-        metrics={"precision": precision, "recall": recall, "f1": f1},
-        passed=f1 >= 0.8,
-        label="word-overlap",
-    )
+        precision = len(extracted_words & expected_words) / max(len(extracted_words), 1)
+        recall = len(extracted_words & expected_words) / len(expected_words)
+        f1 = 2 * precision * recall / max(precision + recall, 1e-9)
+
+        return Evaluation(
+            overall=f1,
+            metrics={"precision": precision, "recall": recall, "f1": f1},
+            passed=f1 >= 0.8,
+            label="word-overlap",
+        )
+
+    return evaluate
 
 
 # ---------------------------------------------------------------------------
@@ -87,12 +89,10 @@ def run() -> None:
 
     loop = EvidenceLoop(
         artifact=artifact,
-        evidence=evidence,
-        evaluator=evaluate,
+        evaluator=make_evaluator(evidence),
         improver=improve,
         policy=strictly_better,
         artifact_id="extracted-doc",
-        evidence_id="source-text",
         evaluator_id="word-overlap-evaluator",
     )
 

@@ -109,7 +109,6 @@ class Provenance:
     """
 
     artifact_id: str
-    evidence_id: str
     evaluator_id: str
     before: Evaluation
     after: Evaluation | None = None
@@ -131,7 +130,6 @@ class Provenance:
 
         return {
             "artifact_id": self.artifact_id,
-            "evidence_id": self.evidence_id,
             "evaluator_id": self.evaluator_id,
             "before": _eval(self.before),
             "after": _eval(self.after),

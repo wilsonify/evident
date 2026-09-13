@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from evident import Diagnosis, Evaluation, EvidenceLoop
 from evident.policies import must_pass
 
-
 # ---------------------------------------------------------------------------
 # Domain types
 # ---------------------------------------------------------------------------
@@ -36,22 +35,27 @@ class ValidationSuite:
 
 
 # ---------------------------------------------------------------------------
-# Evaluator
+# Evaluator factory (closes over validation suite)
 # ---------------------------------------------------------------------------
 
 
-def evaluate(config: Config, suite: ValidationSuite) -> Evaluation:
-    missing = [k for k in suite.required_keys if k not in config.data]
-    present = [k for k in suite.required_keys if k in config.data]
-    coverage = len(present) / max(len(suite.required_keys), 1)
-    passed = len(missing) == 0
-    return Evaluation(
-        overall=coverage,
-        metrics={"coverage": coverage},
-        passed=passed,
-        label="config-coverage",
-        details={"missing": missing},
-    )
+def make_evaluator(suite: ValidationSuite):
+    """Return an evaluator that checks a config against a fixed validation suite."""
+
+    def evaluate(config: Config) -> Evaluation:
+        missing = [k for k in suite.required_keys if k not in config.data]
+        present = [k for k in suite.required_keys if k in config.data]
+        coverage = len(present) / max(len(suite.required_keys), 1)
+        passed = len(missing) == 0
+        return Evaluation(
+            overall=coverage,
+            metrics={"coverage": coverage},
+            passed=passed,
+            label="config-coverage",
+            details={"missing": missing},
+        )
+
+    return evaluate
 
 
 # ---------------------------------------------------------------------------
@@ -63,7 +67,8 @@ def improve(config: Config, diagnosis: Diagnosis) -> Config:
     """Add missing keys using defaults from the evaluation details."""
     # The improver reads diagnosis details to know what to fix.
     # A real improver might ask a human or call an LLM.
-    missing: list[str] = diagnosis.evaluation.details.get("missing", []) if diagnosis.evaluation else []
+    ev = diagnosis.evaluation
+    missing: list[str] = ev.details.get("missing", []) if ev else []
     new_data = dict(config.data)
     for key in missing:
         new_data[key] = f"<default-{key}>"
@@ -85,17 +90,15 @@ def diagnoser(evaluation: Evaluation) -> Diagnosis:
 
 def run() -> None:
     artifact = Config(data={"host": "localhost"})
-    evidence = ValidationSuite(required_keys=["host", "port", "timeout"])
+    suite = ValidationSuite(required_keys=["host", "port", "timeout"])
 
     loop = EvidenceLoop(
         artifact=artifact,
-        evidence=evidence,
-        evaluator=evaluate,
+        evaluator=make_evaluator(suite),
         improver=improve,
         policy=must_pass,
         diagnoser=diagnoser,
         artifact_id="app-config",
-        evidence_id="validation-suite",
         evaluator_id="config-coverage-evaluator",
     )
 

@@ -16,24 +16,14 @@ from evident.models import Decision, Diagnosis, Evaluation, Provenance
 # ---------------------------------------------------------------------------
 
 Artifact = Any
-Evidence = Any
-Evaluator = Callable[[Artifact, Evidence], Evaluation]
-Improver = Callable[[Artifact, Diagnosis], Artifact]
+Evaluator = Callable[[Any], Evaluation]
+Improver = Callable[[Any, Diagnosis], Any]
 Policy = Callable[[Evaluation, Evaluation], Decision]
 
 
 # ---------------------------------------------------------------------------
 # Core functions
 # ---------------------------------------------------------------------------
-
-
-def evaluate(artifact: Artifact, evidence: Evidence, evaluator: Evaluator) -> Evaluation:
-    """Evaluate an artifact against evidence using the provided evaluator.
-
-    The evaluator is application-supplied and must NOT be the same component
-    that produced or modified the artifact.
-    """
-    return evaluator(artifact, evidence)
 
 
 def compare(before: Evaluation, after: Evaluation, policy: Policy) -> Decision:
@@ -47,42 +37,69 @@ def compare(before: Evaluation, after: Evaluation, policy: Policy) -> Decision:
 
 def improve_and_verify(
     artifact: Artifact,
-    evidence: Evidence,
     evaluator: Evaluator,
     improver: Improver,
     policy: Policy,
     diagnosis: Diagnosis | None = None,
     *,
+    provenance: bool = False,
     artifact_id: str = "artifact",
-    evidence_id: str = "evidence",
     evaluator_id: str = "evaluator",
     intervention_id: str = "improver",
-) -> tuple[Artifact, Provenance]:
+) -> tuple[Artifact, Decision] | tuple[Artifact, Decision, Provenance]:
     """Run one full improve-and-verify cycle.
+
+    The evaluator is a plain callable ``artifact -> Evaluation``.
+    It captures its own evidence via closure, keeping the API minimal.
 
     The improver is never trusted.  The framework re-evaluates the candidate
     independently and only accepts it when the policy says so.
 
-    Returns the accepted artifact (original if rejected) and a Provenance record.
+    Parameters
+    ----------
+    artifact:
+        The artifact to improve.
+    evaluator:
+        ``(artifact) -> Evaluation``.  Must be independent of the improver.
+    improver:
+        ``(artifact, diagnosis) -> candidate``.
+    policy:
+        ``(before, after) -> Decision``.
+    diagnosis:
+        Optional diagnosis to pass to the improver.  A bare Diagnosis is
+        created when omitted.
+    provenance:
+        When ``True``, also return a :class:`Provenance` record as the third
+        element of the result tuple.
+    artifact_id, evaluator_id, intervention_id:
+        Identifiers recorded in the Provenance record (used only when
+        ``provenance=True``).
+
+    Returns
+    -------
+    ``(accepted_artifact, decision)`` normally, or
+    ``(accepted_artifact, decision, provenance)`` when ``provenance=True``.
     """
     if diagnosis is None:
         diagnosis = Diagnosis(summary="no diagnosis provided")
 
-    before = evaluate(artifact, evidence, evaluator)
+    before = evaluator(artifact)
     candidate = improver(artifact, diagnosis)
-    after = evaluate(candidate, evidence, evaluator)
+    after = evaluator(candidate)
     decision = compare(before, after, policy)
 
-    provenance = Provenance(
-        artifact_id=artifact_id,
-        evidence_id=evidence_id,
-        evaluator_id=evaluator_id,
-        before=before,
-        after=after,
-        decision=decision,
-        diagnosis=diagnosis,
-        intervention_id=intervention_id,
-    )
-
     accepted_artifact = candidate if decision.accepted else artifact
-    return accepted_artifact, provenance
+
+    if provenance:
+        prov = Provenance(
+            artifact_id=artifact_id,
+            evaluator_id=evaluator_id,
+            before=before,
+            after=after,
+            decision=decision,
+            diagnosis=diagnosis,
+            intervention_id=intervention_id,
+        )
+        return accepted_artifact, decision, prov
+
+    return accepted_artifact, decision

@@ -35,6 +35,47 @@ without forcing you into a heavyweight framework.
 
 ---
 
+## Quick start
+
+```python
+from evident import improve_and_verify, Evaluation
+from evident.policies import strictly_better
+
+# The evaluator captures its own evidence via closure.
+# No evidence parameter needed in the framework API.
+lyrics = load_lyrics("song.lrc")
+audio = load_audio("song.mp3")
+
+def evaluate(candidate):
+    return score_lyrics_against_audio(candidate, lyrics, audio)
+
+def improve(artifact, diagnosis):
+    return fix_timing(artifact, diagnosis)
+
+result, decision = improve_and_verify(
+    artifact=artifact,
+    evaluator=evaluate,
+    improver=improve,
+    policy=strictly_better,
+)
+```
+
+For iterative improvement:
+
+```python
+from evident import EvidenceLoop
+
+loop = EvidenceLoop(
+    artifact=artifact,
+    evaluator=evaluate,   # (artifact) -> Evaluation
+    improver=improve,     # (artifact, diagnosis) -> candidate
+    policy=strictly_better,
+)
+result, history = loop.run()
+```
+
+---
+
 ## Why isn't this just a test suite?
 
 A test suite tells you _pass_ or _fail_.
@@ -75,37 +116,64 @@ Everything domain-specific stays in _your_ code:
 | Slot | Your responsibility |
 |------|-------------------|
 | `artifact` | the thing you want to improve |
-| `evidence` | the ground truth or validation suite |
-| `evaluator` | how you score an artifact against evidence |
-| `improver` | how you propose a candidate |
-| `policy` | what "better" means for your application |
-| `diagnoser` | optional – converts an Evaluation into actionable hints |
+| `evaluator` | `(artifact) -> Evaluation` – captures its own evidence via closure |
+| `improver` | `(artifact, diagnosis) -> candidate` |
+| `policy` | `(before, after) -> Decision` – what "better" means |
+| `diagnoser` | optional `(evaluation) -> Diagnosis` |
 
 ---
 
-## Quick start
+## The fundamental invariant
+
+```
+improver says "better"
+      ≠
+framework accepts "better"
+```
+
+Only independent evaluation causes acceptance:
+
+```
+candidate -> independent evaluator -> evaluation -> policy -> accept/reject
+```
+
+---
+
+## Multi-metric policies
+
+A policy is a plain Python function.
+No DSL, no configuration, no framework-specific abstractions.
 
 ```python
-from evident import EvidenceLoop, Evaluation
-from evident.policies import strictly_better
+def require_both_improve(before: Evaluation, after: Evaluation) -> Decision:
+    """Accept only when ALL metrics improve."""
+    both = all(
+        after.metrics.get(k, 0) > before.metrics.get(k, 0)
+        for k in before.metrics
+    )
+    reason = "all metrics improved" if both else "some metrics did not improve"
+    return Decision(accepted=both, reason=reason, before=before, after=after)
+```
 
-def evaluate(artifact, evidence):
-    score = 1.0 if artifact["text"] == evidence["expected"] else 0.0
-    return Evaluation(overall=score, passed=score >= 0.9)
+---
 
-def improve(artifact, diagnosis):
-    return {"text": artifact["text"].strip().lower()}
+## Provenance (opt-in)
 
-loop = EvidenceLoop(
-    artifact={"text": "  Hello World  "},
-    evidence={"expected": "hello world"},
-    evaluator=evaluate,
-    improver=improve,
-    policy=strictly_better,
+By default `improve_and_verify` returns `(artifact, decision)`.
+Pass `provenance=True` to also get a structured record:
+
+```python
+result, decision, prov = improve_and_verify(
+    artifact, evaluate, improve, policy, provenance=True
 )
-result, history = loop.run()
-print(result)                        # {'text': 'hello world'}
-print(history[0].decision.accepted)  # True
+print(prov.to_dict())
+# {
+#   "artifact_id": "...",
+#   "evaluator_id": "...",
+#   "before": {"overall": 0.5, ...},
+#   "after":  {"overall": 0.8, ...},
+#   "decision": {"accepted": true, "improvement": 0.3}
+# }
 ```
 
 ---
@@ -135,8 +203,8 @@ my-project/
   README.md
   src/my_project/
     artifact.py    <- define your artifact
-    evidence.py    <- define your evidence
-    evaluate.py    <- independent scoring  <- edit this first
+    evidence.py    <- define your evidence type
+    evaluate.py    <- make_evaluator(evidence) -> (artifact) -> Evaluation
     improve.py     <- proposes a candidate
     policy.py      <- accepts or rejects
   tests/
@@ -145,59 +213,12 @@ my-project/
 
 ---
 
-## Core concepts
-
-### Evaluation
-
-Separates **measurement**, **interpretation**, and **decision**:
-
-```python
-Evaluation(
-    overall=0.947,
-    metrics={"timing_accuracy": 0.981, "coverage": 0.932},
-    passed=True,
-    label="word-overlap",
-)
-```
-
-### The fundamental invariant
-
-```
-improver says "better"
-      ≠
-framework accepts "better"
-```
-
-Only independent evaluation causes acceptance:
-
-```
-candidate -> independent evaluator -> evaluation -> policy -> accept/reject
-```
-
-### Provenance
-
-Every cycle produces a `Provenance` record that can be serialised to JSON:
-
-```json
-{
-  "artifact_id": "my-doc",
-  "evaluator_id": "word-overlap-v1",
-  "before": {"overall": 0.41},
-  "after":  {"overall": 0.87},
-  "decision": {"accepted": true, "improvement": 0.46}
-}
-```
-
----
-
 ## Examples
 
 | Example | Domain | What it shows |
 |---------|--------|---------------|
-| `examples/document_extraction/` | Text | Word-overlap scoring, normalisation as improvement |
+| `examples/document_extraction/` | Text | Word-overlap scoring with closure-based evidence |
 | `examples/config_validation/` | Config | Pass/fail assertion, missing-key repair |
-
-Run either example:
 
 ```bash
 python examples/document_extraction/run.py
@@ -208,24 +229,36 @@ python examples/config_validation/run.py
 
 ## API reference
 
+### `improve_and_verify`
+
+```python
+result, decision = improve_and_verify(
+    artifact,
+    evaluator,   # (artifact) -> Evaluation
+    improver,    # (artifact, diagnosis) -> candidate
+    policy,      # (before, after) -> Decision
+)
+```
+
 ### `EvidenceLoop`
 
 ```python
 loop = EvidenceLoop(
     artifact=...,
-    evidence=...,
-    evaluator=evaluate,   # (artifact, evidence) -> Evaluation
-    improver=improve,     # (artifact, diagnosis) -> candidate
-    policy=policy,        # (before, after) -> Decision
+    evaluator=evaluate,
+    improver=improve,
+    policy=policy,
     diagnoser=None,       # optional: (evaluation) -> Diagnosis
     max_iterations=10,
 )
 result, history = loop.run()
 ```
 
-### `improve_and_verify`
+### `compare`
 
-Single-cycle version of the loop, returns `(artifact, Provenance)`.
+```python
+decision = compare(before, after, policy)
+```
 
 ### Bundled policies (`evident.policies`)
 
@@ -252,7 +285,7 @@ ruff check src tests
 ```
 evident/
   models.py      - immutable dataclasses (Evaluation, Decision, Provenance, ...)
-  core.py        - plain functions: evaluate(), compare(), improve_and_verify()
+  core.py        - plain functions: compare(), improve_and_verify()
   loop.py        - EvidenceLoop convenience wrapper
   policies.py    - bundled acceptance policies
   cli.py         - `evidence init` command

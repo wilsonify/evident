@@ -61,7 +61,6 @@ def test_provenance_to_dict():
     dec = Decision(accepted=True, reason="improved", before=before, after=after)
     p = Provenance(
         artifact_id="a",
-        evidence_id="e",
         evaluator_id="ev",
         before=before,
         after=after,
@@ -76,7 +75,7 @@ def test_provenance_to_dict():
 
 def test_provenance_no_after():
     before = Evaluation(overall=0.5)
-    p = Provenance(artifact_id="a", evidence_id="e", evaluator_id="ev", before=before)
+    p = Provenance(artifact_id="a", evaluator_id="ev", before=before)
     d = p.to_dict()
     assert d["after"] is None
     assert d["decision"] is None

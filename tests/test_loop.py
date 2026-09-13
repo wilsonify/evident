@@ -6,7 +6,8 @@ from evident import EvidenceLoop
 from evident.models import Decision, Diagnosis, Evaluation
 
 
-def _evaluator(artifact: dict, evidence: dict) -> Evaluation:
+# Evaluators take only the artifact; evidence is captured via closure.
+def _evaluator(artifact: dict) -> Evaluation:
     return Evaluation(overall=artifact.get("score", 0.0), passed=artifact.get("score", 0.0) >= 0.9)
 
 
@@ -35,7 +36,6 @@ def _must_pass(before: Evaluation, after: Evaluation) -> Decision:
 def test_loop_accepts_improvement():
     loop = EvidenceLoop(
         artifact={"score": 0.5},
-        evidence={},
         evaluator=_evaluator,
         improver=_improver,
         policy=_strictly_better,
@@ -50,7 +50,6 @@ def test_loop_accepts_improvement():
 def test_loop_stops_when_rejected():
     loop = EvidenceLoop(
         artifact={"score": 0.8},
-        evidence={},
         evaluator=_evaluator,
         improver=_lying_improver,
         policy=_strictly_better,
@@ -66,7 +65,6 @@ def test_loop_stops_when_rejected():
 def test_loop_multiple_iterations():
     loop = EvidenceLoop(
         artifact={"score": 0.1},
-        evidence={},
         evaluator=_evaluator,
         improver=_improver,
         policy=_strictly_better,
@@ -82,18 +80,17 @@ def test_loop_multiple_iterations():
 def test_loop_history_provenance():
     loop = EvidenceLoop(
         artifact={"score": 0.5},
-        evidence={},
         evaluator=_evaluator,
         improver=_improver,
         policy=_strictly_better,
         max_iterations=1,
         artifact_id="my-artifact",
-        evidence_id="my-evidence",
+        evaluator_id="my-evaluator",
     )
     _, history = loop.run()
     p = history[0]
     assert p.artifact_id == "my-artifact"
-    assert p.evidence_id == "my-evidence"
+    assert p.evaluator_id == "my-evaluator"
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +102,6 @@ def test_regression_detected_and_rejected():
     """Improver introduces regression; loop detects and rejects."""
     loop = EvidenceLoop(
         artifact={"score": 0.9},
-        evidence={},
         evaluator=_evaluator,
         improver=_lying_improver,
         policy=_strictly_better,
@@ -129,7 +125,6 @@ def test_diagnoser_is_called():
 
     loop = EvidenceLoop(
         artifact={"score": 0.5},
-        evidence={},
         evaluator=_evaluator,
         improver=_improver,
         policy=_strictly_better,
@@ -149,7 +144,7 @@ def test_diagnoser_is_called():
 def test_partially_improved_candidate():
     """Improver gets some metrics better but overall still below threshold."""
 
-    def _multi_eval(artifact: dict, evidence: dict) -> Evaluation:
+    def _multi_eval(artifact: dict) -> Evaluation:
         a = artifact.get("a", 0.0)
         b = artifact.get("b", 0.0)
         return Evaluation(overall=(a + b) / 2, metrics={"a": a, "b": b})
@@ -164,7 +159,6 @@ def test_partially_improved_candidate():
     artifact = {"a": 0.0, "b": 0.0}
     loop = EvidenceLoop(
         artifact=artifact,
-        evidence={},
         evaluator=_multi_eval,
         improver=_partial_improver,
         policy=_threshold_policy,
@@ -188,10 +182,37 @@ def test_failed_intervention_propagates():
 
     loop = EvidenceLoop(
         artifact={"score": 0.5},
-        evidence={},
         evaluator=_evaluator,
         improver=_bad_improver,
         policy=_strictly_better,
     )
     with pytest.raises(ValueError, match="intervention failed"):
         loop.run()
+
+
+# ---------------------------------------------------------------------------
+# Closure-based evidence
+# ---------------------------------------------------------------------------
+
+
+def test_loop_evaluator_captures_evidence_via_closure():
+    """Evaluator closes over its own evidence; loop needs no evidence param."""
+    reference = "expected output"
+
+    def evaluate(artifact: dict) -> Evaluation:
+        score = 1.0 if artifact.get("text") == reference else 0.0
+        return Evaluation(overall=score, passed=score >= 0.9)
+
+    def improve(artifact: dict, _diagnosis: Diagnosis) -> dict:
+        return {"text": reference}
+
+    loop = EvidenceLoop(
+        artifact={"text": "wrong"},
+        evaluator=evaluate,
+        improver=improve,
+        policy=_strictly_better,
+        max_iterations=1,
+    )
+    result, history = loop.run()
+    assert history[0].decision.accepted is True
+    assert result["text"] == reference

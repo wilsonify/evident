@@ -66,6 +66,9 @@ class Evidence:
 _EVALUATE = '''\
 """Evaluation logic for {name}.
 
+The evaluator is a plain function: artifact -> Evaluation.
+It captures its own evidence via closure, keeping the loop API clean.
+
 The evaluator must be independent of the artifact and improver.
 """
 
@@ -74,11 +77,16 @@ from .artifact import Artifact
 from .evidence import Evidence
 
 
-def evaluate(artifact: Artifact, evidence: Evidence) -> Evaluation:
-    """Return an Evaluation that measures how well artifact agrees with evidence."""
-    # TODO: implement domain-specific scoring
-    score = 1.0 if artifact.content == evidence.reference else 0.0
-    return Evaluation(overall=score, passed=score >= 0.9)
+def make_evaluator(evidence: Evidence):
+    """Return an evaluator that scores an artifact against fixed evidence."""
+
+    def evaluate(artifact: Artifact) -> Evaluation:
+        """Return an Evaluation that measures how well artifact agrees with evidence."""
+        # TODO: implement domain-specific scoring
+        score = 1.0 if artifact.content == evidence.reference else 0.0
+        return Evaluation(overall=score, passed=score >= 0.9)
+
+    return evaluate
 '''
 
 _IMPROVE = '''\
@@ -130,14 +138,15 @@ Observe → Evaluate → Diagnose → Intervene → Verify → Keep or Reject
 from evident import EvidenceLoop
 from {pkg}.artifact import Artifact
 from {pkg}.evidence import Evidence
-from {pkg}.evaluate import evaluate
+from {pkg}.evaluate import make_evaluator
 from {pkg}.improve import improve
 from {pkg}.policy import policy
 
+evidence = Evidence(reference="...")
+
 loop = EvidenceLoop(
     artifact=Artifact(content="..."),
-    evidence=Evidence(reference="..."),
-    evaluator=evaluate,
+    evaluator=make_evaluator(evidence),
     improver=improve,
     policy=policy,
 )
@@ -150,11 +159,11 @@ result, history = loop.run()
 src/{pkg}/
     artifact.py   – what you're evaluating
     evidence.py   – the ground truth
-    evaluate.py   – independent scoring
+    evaluate.py   – independent scoring (edit this first)
     improve.py    – proposes a candidate
     policy.py     – accepts or rejects the candidate
 tests/
-    test_evaluate.py
+    test_{pkg}.py
 ```
 """
 
@@ -164,7 +173,7 @@ _TEST = '''\
 from evident import EvidenceLoop
 from {pkg}.artifact import Artifact
 from {pkg}.evidence import Evidence
-from {pkg}.evaluate import evaluate
+from {pkg}.evaluate import make_evaluator
 from {pkg}.improve import improve
 from {pkg}.policy import policy
 
@@ -175,8 +184,7 @@ def test_perfect_artifact_is_accepted():
     evidence = Evidence(reference="hello")
     loop = EvidenceLoop(
         artifact=artifact,
-        evidence=evidence,
-        evaluator=evaluate,
+        evaluator=make_evaluator(evidence),
         improver=improve,
         policy=policy,
     )
