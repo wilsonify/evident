@@ -18,9 +18,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "{name}"
-version = "0.1.0"
+version = "1.0.0"
 requires-python = ">=3.11"
-dependencies = ["evident"]
+dependencies = ["evidentkit"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.4"]
