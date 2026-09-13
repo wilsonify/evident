@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "evident"
-version = "0.1.0"
+name = "evidentkit"
+version = "1.0.0"
 description = "A reusable toolkit for evidence-driven applications"
 readme = "README.md"
 requires-python = ">=3.11"
