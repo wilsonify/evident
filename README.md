@@ -181,7 +181,7 @@ print(prov.to_dict())
 ## Installation
 
 ```bash
-pip install evident
+pip install evidentkit
 ```
 
 ---
