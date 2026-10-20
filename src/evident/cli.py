@@ -214,16 +214,17 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     ctx = {"name": name, "pkg": pkg}
 
-    (root / "pyproject.toml").write_text(_PYPROJECT.format(**ctx))
-    (root / "README.md").write_text(_README.format(**ctx))
-    (src_pkg / "__init__.py").write_text("")
-    (src_pkg / "artifact.py").write_text(_ARTIFACT.format(**ctx))
-    (src_pkg / "evidence.py").write_text(_EVIDENCE.format(**ctx))
-    (src_pkg / "evaluate.py").write_text(_EVALUATE.format(**ctx))
-    (src_pkg / "improve.py").write_text(_IMPROVE.format(**ctx))
-    (src_pkg / "policy.py").write_text(_POLICY.format(**ctx))
-    (tests / "__init__.py").write_text("")
-    (tests / f"test_{pkg}.py").write_text(_TEST.format(**ctx))
+    encoding = "utf-8"
+    (root / "pyproject.toml").write_text(_PYPROJECT.format(**ctx), encoding=encoding)
+    (root / "README.md").write_text(_README.format(**ctx), encoding=encoding)
+    (src_pkg / "__init__.py").write_text("", encoding=encoding)
+    (src_pkg / "artifact.py").write_text(_ARTIFACT.format(**ctx), encoding=encoding)
+    (src_pkg / "evidence.py").write_text(_EVIDENCE.format(**ctx), encoding=encoding)
+    (src_pkg / "evaluate.py").write_text(_EVALUATE.format(**ctx), encoding=encoding)
+    (src_pkg / "improve.py").write_text(_IMPROVE.format(**ctx), encoding=encoding)
+    (src_pkg / "policy.py").write_text(_POLICY.format(**ctx), encoding=encoding)
+    (tests / "__init__.py").write_text("", encoding=encoding)
+    (tests / f"test_{pkg}.py").write_text(_TEST.format(**ctx), encoding=encoding)
 
     print(f"Created project '{name}'")
     print(textwrap.dedent(f"""
@@ -232,11 +233,11 @@ def cmd_init(args: argparse.Namespace) -> int:
             pyproject.toml
             README.md
             src/{pkg}/
-              artifact.py   ← define your artifact
-              evidence.py   ← define your evidence
-              evaluate.py   ← independent scoring (edit this first)
-              improve.py    ← proposes a candidate
-              policy.py     ← accepts or rejects
+              artifact.py   <- define your artifact
+              evidence.py   <- define your evidence
+              evaluate.py   <- independent scoring (edit this first)
+              improve.py    <- proposes a candidate
+              policy.py     <- accepts or rejects
             tests/
               test_{pkg}.py
 
