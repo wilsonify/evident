@@ -25,6 +25,15 @@ def test_init_duplicate_fails(tmp_path, monkeypatch, capsys):
     assert "already exists" in capsys.readouterr().err
 
 
+def test_init_is_encoding_safe(tmp_path, monkeypatch, capsys):
+    """Files are UTF-8 and console output works on a legacy Windows code page."""
+    monkeypatch.chdir(tmp_path)
+    assert main(["init", "my-project"]) == 0
+    readme = tmp_path / "my-project" / "README.md"
+    assert "\u2192" in readme.read_text(encoding="utf-8")
+    capsys.readouterr().out.encode("cp1252")  # must not raise UnicodeEncodeError
+
+
 def test_no_command_prints_help(capsys):
     rc = main([])
     assert rc == 0
